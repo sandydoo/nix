@@ -178,7 +178,7 @@ void initNix()
 
     loadConfFile();
 
-    startSignalHandlerThread();
+    /* startSignalHandlerThread(); */
 
     /* Reset SIGCHLD to its default. */
     struct sigaction act;
