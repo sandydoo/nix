@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <pwd.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1648,14 +1649,18 @@ struct InterruptCallbacks {
 
 static Sync<InterruptCallbacks> _interruptCallbacks;
 
-static void signalHandlerThread(sigset_t set)
+static void * signalHandlerThread(void *arg)
 {
+    sigset_t set = *(sigset_t *) arg;
     while (true) {
         int signal = 0;
-        sigwait(&set, &signal);
+        if (sigwait(&set, &signal))
+            throw SysError("sigwait");
 
-        if (signal == SIGINT || signal == SIGTERM || signal == SIGHUP)
+        if (signal == SIGINT || signal == SIGTERM || signal == SIGHUP) {
+            std::cout << "Interrupted!" << 'n';
             triggerInterrupt();
+        }
 
         else if (signal == SIGWINCH) {
             updateWindowSize();
@@ -1665,6 +1670,8 @@ static void signalHandlerThread(sigset_t set)
 
 void triggerInterrupt()
 {
+    std::cout << "Triggered interrupt" << 'n';
+
     _isInterrupted = true;
 
     {
@@ -1691,6 +1698,7 @@ void triggerInterrupt()
 }
 
 static sigset_t savedSignalMask;
+static pthread_t thread;
 
 void startSignalHandlerThread()
 {
@@ -1709,7 +1717,7 @@ void startSignalHandlerThread()
     if (pthread_sigmask(SIG_BLOCK, &set, nullptr))
         throw SysError("blocking signals");
 
-    std::thread(signalHandlerThread, set).detach();
+    pthread_create(&thread, nullptr, signalHandlerThread, &set);
 }
 
 static void restoreSignals()
